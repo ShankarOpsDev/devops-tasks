@@ -1,0 +1,45 @@
+# Disk Usage Monitoring Script
+
+## Overview
+A Bash script that monitors disk usage across all mounted partitions and logs a warning when any partition exceeds a defined threshold (default: 80%). Designed to run automatically via cron for proactive monitoring — catching storage issues before they cause incidents, rather than reacting after a server goes down.
+
+## Why I built this
+Coming from an infrastructure/support background handling incidents and deployments, I wanted a hands-on way to apply shell scripting to a real operational problem: proactive disk space monitoring. This script reflects patterns I'd use in a real production environment — parameterized thresholds, timestamped logging, and cron-safe execution.
+
+## The Script
+
+\`\`\`bash
+#!/bin/bash
+
+THRESHOLD=80
+LOGFILE="/var/log/disk_usage_alert.log"
+
+df -P | tail -n +2 | awk '{print $5, $6}' | while read -r usage mount
+do
+  pct=$(echo "$usage" | tr -d '%')
+  if [ "$pct" -ge "$THRESHOLD" ]; then
+    echo "$(date '+%Y-%m-%d %H:%M:%S') WARNING: $mount is at ${pct}% usage" >> "$LOGFILE"
+  fi
+done
+\`\`\`
+
+## How it works
+1. `df -P | tail -n +2` — gets disk usage in a script-friendly (POSIX) format, skipping the header row
+2. `awk '{print $5, $6}'` — extracts just the capacity percentage and mount point columns
+3. `while read -r usage mount` — loops through each line; `-r` prevents backslashes from being misinterpreted, avoiding path-parsing bugs
+4. `tr -d '%'` — strips the `%` symbol so the value can be compared numerically
+5. `[ "$pct" -ge "$THRESHOLD" ]` — flags any partition at or above the threshold
+6. `>>` appends each alert to the log file with a timestamp, preserving history across runs (using `>` here would overwrite the log every run, losing all prior alerts)
+
+## Automation via cron
+\`\`\`
+*/15 * * * * /path/to/disk_check.sh
+\`\`\`
+Runs the check every 15 minutes.
+
+**Production note:** cron runs with a minimal environment (no full `PATH`, no shell profile). In a real deployment, I'd reference full binary paths (e.g. `/usr/bin/awk`) to avoid silent failures when the script runs outside an interactive shell.
+
+## Possible enhancements
+- Send alerts via email/Slack webhook instead of just logging
+- Add log rotation to prevent the log file from growing unbounded
+- Parameterize threshold per-mount (e.g. stricter threshold on `/var` vs `/tmp`)
